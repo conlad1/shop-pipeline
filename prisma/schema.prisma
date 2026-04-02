@@ -1,0 +1,113 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Customer {
+  id              Int      @id @default(autoincrement())
+  fullName        String
+  email           String   @unique
+  gender          String
+  birthdate       String
+  createdAt       DateTime
+  city            String?
+  state           String?
+  zipCode         String?
+  customerSegment String?
+  loyaltyTier     String?
+  isActive        Boolean  @default(true)
+
+  orders  Order[]
+  reviews ProductReview[]
+}
+
+model Product {
+  id          Int     @id @default(autoincrement())
+  sku         String  @unique
+  productName String
+  category    String
+  price       Float
+  cost        Float
+  isActive    Boolean @default(true)
+
+  orderItems OrderItem[]
+  reviews    ProductReview[]
+}
+
+model Order {
+  id            Int      @id @default(autoincrement())
+  customerId    Int
+  orderDatetime DateTime
+  billingZip    String?
+  shippingZip   String?
+  shippingState String?
+  paymentMethod String
+  deviceType    String
+  ipCountry     String
+  promoUsed     Boolean  @default(false)
+  promoCode     String?
+  orderSubtotal Float
+  shippingFee   Float
+  taxAmount     Float
+  orderTotal    Float
+  riskScore     Float
+  isFraud       Boolean  @default(false)
+
+  customer Customer    @relation(fields: [customerId], references: [id])
+  items    OrderItem[]
+  shipment Shipment?
+
+  @@index([customerId])
+  @@index([orderDatetime])
+}
+
+model OrderItem {
+  id        Int   @id @default(autoincrement())
+  orderId   Int
+  productId Int
+  quantity  Int
+  unitPrice Float
+  lineTotal Float
+
+  order   Order   @relation(fields: [orderId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+model Shipment {
+  id             Int      @id @default(autoincrement())
+  orderId        Int      @unique
+  shipDatetime   DateTime
+  carrier        String
+  shippingMethod String
+  distanceBand   String
+  promisedDays   Int
+  actualDays     Int
+  lateDelivery   Boolean  @default(false)
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@index([lateDelivery])
+}
+
+model ProductReview {
+  id             Int      @id @default(autoincrement())
+  customerId     Int
+  productId      Int
+  rating         Int
+  reviewDatetime DateTime
+  reviewText     String?
+
+  customer Customer @relation(fields: [customerId], references: [id])
+  product  Product  @relation(fields: [productId], references: [id])
+
+  @@unique([customerId, productId])
+  @@index([productId])
+  @@index([customerId])
+}
