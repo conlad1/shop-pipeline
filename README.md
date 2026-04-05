@@ -22,6 +22,7 @@ python3 -m venv jobs/venv
 source jobs/venv/bin/activate        # Mac/Linux
 # jobs\venv\Scripts\activate         # Windows
 pip install joblib pandas scikit-learn numpy
+pip install psycopg2-binary
 ```
 
 ### 3. Set up env variables

@@ -57,9 +57,10 @@ model Order {
   riskScore     Float
   isFraud       Boolean  @default(false)
 
-  customer Customer    @relation(fields: [customerId], references: [id])
-  items    OrderItem[]
-  shipment Shipment?
+  customer   Customer        @relation(fields: [customerId], references: [id])
+  items      OrderItem[]
+  shipment   Shipment?
+  prediction OrderPrediction?
 
   @@index([customerId])
   @@index([orderDatetime])
@@ -94,6 +95,16 @@ model Shipment {
   order Order @relation(fields: [orderId], references: [id])
 
   @@index([lateDelivery])
+}
+
+model OrderPrediction {
+  orderId            Int      @id
+  fraudProbability   Float
+  isFraudPredicted   Boolean
+  decisionThreshold  Float
+  predictedAt        DateTime
+
+  order Order @relation(fields: [orderId], references: [id])
 }
 
 model ProductReview {

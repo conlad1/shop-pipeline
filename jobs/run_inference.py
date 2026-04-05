@@ -16,11 +16,14 @@
 
 import argparse
 import sqlite3
+import os
 import joblib
 import json
 import pandas as pd
 import numpy as np
-from datetime import datetime
+import psycopg2
+import psycopg2.extras
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -186,34 +189,37 @@ def load_features(db_path):
 # ── Step 3: Score and write predictions ───────────────────────────────────────
 
 def write_predictions(db_path, order_ids, probabilities, predictions, threshold):
-    """Create order_predictions table if needed and upsert new predictions."""
-    ts   = datetime.utcnow().isoformat()
+    """Upsert predictions into the OrderPrediction table in Postgres."""
+    database_url = os.environ.get("DATABASE_URL")
+    if not database_url:
+        raise RuntimeError(
+            "DATABASE_URL environment variable is not set. "
+            "Add it to jobs/.env or export it before running."
+        )
+
+    ts = datetime.now(timezone.utc)
     rows = [
-        (int(oid), float(prob), int(pred), float(threshold), ts)
+        (int(oid), float(prob), bool(pred), float(threshold), ts)
         for oid, prob, pred in zip(order_ids, probabilities, predictions)
     ]
 
-    conn = sqlite3.connect(db_path)
+    conn = psycopg2.connect(database_url)
     cur  = conn.cursor()
 
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS order_predictions (
-            order_id              INTEGER PRIMARY KEY,
-            fraud_probability     REAL,
-            is_fraud_predicted    INTEGER,
-            decision_threshold    REAL,
-            prediction_timestamp  TEXT
-        )
-    """)
-
-    cur.executemany("""
-        INSERT OR REPLACE INTO order_predictions
-        (order_id, fraud_probability, is_fraud_predicted,
-         decision_threshold, prediction_timestamp)
-        VALUES (?, ?, ?, ?, ?)
+    psycopg2.extras.execute_values(cur, """
+        INSERT INTO "OrderPrediction"
+            ("orderId", "fraudProbability", "isFraudPredicted",
+             "decisionThreshold", "predictedAt")
+        VALUES %s
+        ON CONFLICT ("orderId") DO UPDATE SET
+            "fraudProbability"  = EXCLUDED."fraudProbability",
+            "isFraudPredicted"  = EXCLUDED."isFraudPredicted",
+            "decisionThreshold" = EXCLUDED."decisionThreshold",
+            "predictedAt"       = EXCLUDED."predictedAt"
     """, rows)
 
     conn.commit()
+    cur.close()
     conn.close()
 
     flagged = int(sum(predictions))
@@ -243,7 +249,7 @@ def run(db_path, model_path):
     probabilities = pipeline.predict_proba(X)[:, 1]
     predictions   = (probabilities >= threshold).astype(int)
 
-    print("\n[4/4] Writing predictions to shop.db...")
+    print("\n[4/4] Writing predictions to Postgres...")
     write_predictions(db_path, order_ids, probabilities, predictions, threshold)
 
     print("\n" + "=" * 55)

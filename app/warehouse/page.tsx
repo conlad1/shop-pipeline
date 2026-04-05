@@ -3,37 +3,10 @@ import { prisma } from "@/lib/db";
 import { RunFraudButton } from "@/components/run-fraud-button";
 import { StatusBadge } from "@/components/status-badge";
 import { FraudStatusToggle } from "@/components/fraud-status-toggle";
-import Database from "better-sqlite3";
-import path from "path";
-
 const PAGE_SIZE_OPTIONS = ["25", "50", "100", "200", "500", "all"] as const;
 
 type PageSizeOption = (typeof PAGE_SIZE_OPTIONS)[number];
 type FraudFilter = "all" | "flagged" | "not-flagged";
-
-type FraudPrediction = {
-  order_id: number;
-  fraud_probability: number;
-  is_fraud_predicted: number;
-};
-
-function getFraudPredictions(): Map<number, FraudPrediction> {
-  try {
-    const db = new Database(path.join(process.cwd(), "prisma", "shop.db"), {
-      readonly: true,
-    });
-    const rows = db
-      .prepare(
-        "SELECT order_id, fraud_probability, is_fraud_predicted FROM order_predictions",
-      )
-      .all() as FraudPrediction[];
-    db.close();
-    return new Map(rows.map((r) => [r.order_id, r]));
-  } catch {
-    // Table doesn't exist yet — fraud detection hasn't been run
-    return new Map();
-  }
-}
 
 function getSingleParam(
   value: string | string[] | undefined,
@@ -103,9 +76,6 @@ export default async function WarehousePage({
     1,
   );
 
-  // Load ML predictions from shop.db to use for filtering
-  const fraudMap = getFraudPredictions();
-
   const searchConditions: Array<Record<string, unknown>> = [];
 
   if (searchQuery.length > 0) {
@@ -153,6 +123,7 @@ export default async function WarehousePage({
       customer: { select: { fullName: true } },
       items: { include: { product: true } },
       shipment: true,
+      prediction: true,
     },
   });
 
@@ -331,7 +302,7 @@ export default async function WarehousePage({
                 (sum, item) => sum + item.quantity,
                 0,
               );
-              const fraud = fraudMap.get(order.id);
+              const fraud = order.prediction;
 
               return (
                 <tr key={order.id} className="hover:bg-zinc-50">
@@ -366,15 +337,15 @@ export default async function WarehousePage({
                     {fraud ? (
                       <span
                         className={`font-mono font-bold ${
-                          fraud.is_fraud_predicted
+                          fraud.isFraudPredicted
                             ? "text-danger"
-                            : fraud.fraud_probability >= 0.3
+                            : fraud.fraudProbability >= 0.3
                               ? "text-warning"
                               : "text-success"
                         }`}
                       >
-                        {(fraud.fraud_probability * 100).toFixed(1)}%
-                        {fraud.is_fraud_predicted ? " ⚠" : ""}
+                        {(fraud.fraudProbability * 100).toFixed(1)}%
+                        {fraud.isFraudPredicted ? " ⚠" : ""}
                       </span>
                     ) : (
                       <span className="text-zinc-300">—</span>
