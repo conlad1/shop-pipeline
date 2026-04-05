@@ -8,6 +8,31 @@ type ActionState = {
   error?: string;
 } | null;
 
+export async function updateOrderFraudStatus({
+  orderId,
+  isFraud,
+}: {
+  orderId: number;
+  isFraud: boolean;
+}): Promise<{ success: boolean; error?: string }> {
+  if (!Number.isInteger(orderId) || orderId < 1) {
+    return { success: false, error: "Invalid order id." };
+  }
+
+  try {
+    await prisma.order.update({
+      where: { id: orderId },
+      data: { isFraud },
+    });
+
+    revalidatePath("/orders");
+
+    return { success: true };
+  } catch {
+    return { success: false, error: "Unable to save fraud status." };
+  }
+}
+
 export async function createOrder(
   customerId: string,
   _prevState: ActionState,
