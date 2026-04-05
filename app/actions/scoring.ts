@@ -62,7 +62,7 @@ export async function runScoring(
     )
   );
 
-  revalidatePath("/warehouse");
+  revalidatePath("/orders");
 
   return { success: true, scoredCount: scores.length };
 }

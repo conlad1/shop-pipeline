@@ -15,10 +15,10 @@ export function Nav() {
             Customers
           </Link>
           <Link
-            href="/warehouse"
+            href="/orders"
             className="text-zinc-600 hover:text-zinc-900 transition-colors"
           >
-            Warehouse
+            Orders
           </Link>
         </div>
       </div>
