@@ -2,6 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { RunFraudButton } from "@/components/run-fraud-button";
 import { StatusBadge } from "@/components/status-badge";
+import { FraudStatusToggle } from "@/components/fraud-status-toggle";
 import Database from "better-sqlite3";
 import path from "path";
 
@@ -18,8 +19,14 @@ type FraudPrediction = {
 
 function getFraudPredictions(): Map<number, FraudPrediction> {
   try {
-    const db = new Database(path.join(process.cwd(), "prisma", "shop.db"), { readonly: true });
-    const rows = db.prepare("SELECT order_id, fraud_probability, is_fraud_predicted FROM order_predictions").all() as FraudPrediction[];
+    const db = new Database(path.join(process.cwd(), "prisma", "shop.db"), {
+      readonly: true,
+    });
+    const rows = db
+      .prepare(
+        "SELECT order_id, fraud_probability, is_fraud_predicted FROM order_predictions",
+      )
+      .all() as FraudPrediction[];
     db.close();
     return new Map(rows.map((r) => [r.order_id, r]));
   } catch {
@@ -28,7 +35,9 @@ function getFraudPredictions(): Map<number, FraudPrediction> {
   }
 }
 
-function getSingleParam(value: string | string[] | undefined): string | undefined {
+function getSingleParam(
+  value: string | string[] | undefined,
+): string | undefined {
   if (Array.isArray(value)) return value[0];
   return value;
 }
@@ -39,7 +48,10 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
   return Math.floor(parsed);
 }
 
-function getPaginationWindow(currentPage: number, totalPages: number): Array<number | "ellipsis"> {
+function getPaginationWindow(
+  currentPage: number,
+  totalPages: number,
+): Array<number | "ellipsis"> {
   if (totalPages <= 7) {
     return Array.from({ length: totalPages }, (_, i) => i + 1);
   }
@@ -72,7 +84,9 @@ export default async function WarehousePage({
   const resolvedParams = await searchParams;
 
   const rawPageSize = getSingleParam(resolvedParams.pageSize) ?? "50";
-  const pageSize: PageSizeOption = PAGE_SIZE_OPTIONS.includes(rawPageSize as PageSizeOption)
+  const pageSize: PageSizeOption = PAGE_SIZE_OPTIONS.includes(
+    rawPageSize as PageSizeOption,
+  )
     ? (rawPageSize as PageSizeOption)
     : "50";
 
@@ -80,9 +94,14 @@ export default async function WarehousePage({
 
   const rawFraudFilter = getSingleParam(resolvedParams.fraud) ?? "all";
   const fraudFilter: FraudFilter =
-    rawFraudFilter === "flagged" || rawFraudFilter === "not-flagged" ? rawFraudFilter : "all";
+    rawFraudFilter === "flagged" || rawFraudFilter === "not-flagged"
+      ? rawFraudFilter
+      : "all";
 
-  const requestedPage = parsePositiveInt(getSingleParam(resolvedParams.page), 1);
+  const requestedPage = parsePositiveInt(
+    getSingleParam(resolvedParams.page),
+    1,
+  );
 
   // Load ML predictions from shop.db to use for filtering
   const fraudMap = getFraudPredictions();
@@ -96,7 +115,9 @@ export default async function WarehousePage({
     searchConditions.push({
       items: {
         some: {
-          product: { productName: { contains: searchQuery, mode: "insensitive" } },
+          product: {
+            productName: { contains: searchQuery, mode: "insensitive" },
+          },
         },
       },
     });
@@ -107,17 +128,9 @@ export default async function WarehousePage({
     }
   }
 
-  // Build an id filter from ML predictions when fraud filter is active
-  const fraudIdFilter = (() => {
-    if (fraudFilter === "all" || fraudMap.size === 0) return undefined;
-    const ids = [...fraudMap.values()]
-      .filter((p) => fraudFilter === "flagged" ? p.is_fraud_predicted === 1 : p.is_fraud_predicted === 0)
-      .map((p) => p.order_id);
-    return { id: { in: ids } };
-  })();
-
   const where = {
-    ...fraudIdFilter,
+    ...(fraudFilter === "flagged" ? { isFraud: true } : {}),
+    ...(fraudFilter === "not-flagged" ? { isFraud: false } : {}),
     ...(searchConditions.length > 0 ? { OR: searchConditions } : {}),
   };
 
@@ -125,13 +138,17 @@ export default async function WarehousePage({
 
   const showAll = pageSize === "all";
   const numericPageSize = showAll ? Math.max(totalCount, 1) : Number(pageSize);
-  const totalPages = showAll ? 1 : Math.max(1, Math.ceil(totalCount / numericPageSize));
+  const totalPages = showAll
+    ? 1
+    : Math.max(1, Math.ceil(totalCount / numericPageSize));
   const currentPage = showAll ? 1 : Math.min(requestedPage, totalPages);
 
   const orders = await prisma.order.findMany({
     where,
     orderBy: { riskScore: "desc" },
-    ...(showAll ? {} : { skip: (currentPage - 1) * numericPageSize, take: numericPageSize }),
+    ...(showAll
+      ? {}
+      : { skip: (currentPage - 1) * numericPageSize, take: numericPageSize }),
     include: {
       customer: { select: { fullName: true } },
       items: { include: { product: true } },
@@ -139,10 +156,22 @@ export default async function WarehousePage({
     },
   });
 
-  const visibleStart = totalCount === 0 ? 0 : showAll ? 1 : (currentPage - 1) * numericPageSize + 1;
-  const visibleEnd = totalCount === 0 ? 0 : showAll ? totalCount : visibleStart + orders.length - 1;
+  const visibleStart =
+    totalCount === 0
+      ? 0
+      : showAll
+        ? 1
+        : (currentPage - 1) * numericPageSize + 1;
+  const visibleEnd =
+    totalCount === 0
+      ? 0
+      : showAll
+        ? totalCount
+        : visibleStart + orders.length - 1;
 
-  const pageWindow = showAll ? [1] : getPaginationWindow(currentPage, totalPages);
+  const pageWindow = showAll
+    ? [1]
+    : getPaginationWindow(currentPage, totalPages);
 
   function buildWarehouseHref(overrides?: {
     page?: number;
@@ -154,7 +183,9 @@ export default async function WarehousePage({
     const nextQuery = overrides?.q ?? searchQuery;
     const nextFraudFilter = overrides?.fraud ?? fraudFilter;
     const nextShowAll = nextPageSize === "all";
-    const nextPage = nextShowAll ? 1 : Math.max(overrides?.page ?? currentPage, 1);
+    const nextPage = nextShowAll
+      ? 1
+      : Math.max(overrides?.page ?? currentPage, 1);
 
     const params = new URLSearchParams();
     if (nextPageSize !== "50") params.set("pageSize", nextPageSize);
@@ -170,16 +201,26 @@ export default async function WarehousePage({
     <div className="mx-auto max-w-7xl px-6 py-10">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-zinc-900">Fraud Detection Priority Queue</h1>
-          <p className="mt-1 text-sm text-zinc-500">Orders ranked by risk score.</p>
+          <h1 className="text-2xl font-bold text-zinc-900">
+            Fraud Detection Priority Queue
+          </h1>
+          <p className="mt-1 text-sm text-zinc-500">
+            Orders ranked by risk score.
+          </p>
         </div>
         <RunFraudButton />
       </div>
 
-      <form method="get" className="mt-6 rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+      <form
+        method="get"
+        className="mt-6 rounded-lg border border-zinc-200 bg-white p-4 shadow-sm"
+      >
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-64 flex-1">
-            <label htmlFor="q" className="mb-1 block text-xs font-semibold uppercase text-zinc-500">
+            <label
+              htmlFor="q"
+              className="mb-1 block text-xs font-semibold uppercase text-zinc-500"
+            >
               Search
             </label>
             <input
@@ -192,7 +233,10 @@ export default async function WarehousePage({
           </div>
 
           <div>
-            <label htmlFor="fraud" className="mb-1 block text-xs font-semibold uppercase text-zinc-500">
+            <label
+              htmlFor="fraud"
+              className="mb-1 block text-xs font-semibold uppercase text-zinc-500"
+            >
               Fraud Filter
             </label>
             <select
@@ -230,7 +274,9 @@ export default async function WarehousePage({
           Showing {visibleStart}–{visibleEnd} of {totalCount} orders
         </p>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-semibold uppercase text-zinc-500">Rows per page</span>
+          <span className="text-xs font-semibold uppercase text-zinc-500">
+            Rows per page
+          </span>
           {PAGE_SIZE_OPTIONS.map((option) => {
             const isActive = option === pageSize;
             return (
@@ -261,29 +307,45 @@ export default async function WarehousePage({
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Ordered</th>
               <th className="px-4 py-3">Est. Delivery</th>
-              <th className="px-4 py-3">Fraud Prob.</th>
+              <th className="px-4 py-3">Flag Prob.</th>
+              <th className="px-4 py-3">Risk Score</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-100">
             {orders.map((order, i) => {
               const estimatedDelivery = new Date(order.orderDatetime);
               estimatedDelivery.setDate(
-                estimatedDelivery.getDate() + (order.shipment?.promisedDays ?? 7)
+                estimatedDelivery.getDate() +
+                  (order.shipment?.promisedDays ?? 7),
               );
               const status = order.shipment
-                ? order.shipment.lateDelivery ? "late" : "on time"
+                ? order.shipment.lateDelivery
+                  ? "late"
+                  : "on time"
                 : "processing";
-              const product = order.items.map((item) => item.product.productName).join(", ") || "—";
-              const quantity = order.items.reduce((sum, item) => sum + item.quantity, 0);
+              const product =
+                order.items
+                  .map((item) => item.product.productName)
+                  .join(", ") || "—";
+              const quantity = order.items.reduce(
+                (sum, item) => sum + item.quantity,
+                0,
+              );
               const fraud = fraudMap.get(order.id);
 
               return (
                 <tr key={order.id} className="hover:bg-zinc-50">
                   <td className="px-4 py-3 font-mono text-zinc-400">
-                    {showAll ? i + 1 : (currentPage - 1) * numericPageSize + i + 1}
+                    {showAll
+                      ? i + 1
+                      : (currentPage - 1) * numericPageSize + i + 1}
                   </td>
-                  <td className="px-4 py-3 text-zinc-700">{order.customer.fullName}</td>
-                  <td className="px-4 py-3 font-medium text-zinc-900">{product}</td>
+                  <td className="px-4 py-3 text-zinc-700">
+                    {order.customer.fullName}
+                  </td>
+                  <td className="px-4 py-3 font-medium text-zinc-900">
+                    {product}
+                  </td>
                   <td className="px-4 py-3 text-zinc-600">{quantity}</td>
                   <td className="px-4 py-3">
                     <StatusBadge status={status} />
@@ -293,6 +355,12 @@ export default async function WarehousePage({
                   </td>
                   <td className="px-4 py-3 text-zinc-500">
                     {estimatedDelivery.toLocaleDateString()}
+                  </td>
+                  <td className="px-4 py-3">
+                    <FraudStatusToggle
+                      orderId={order.id}
+                      initialIsFraud={order.isFraud}
+                    />
                   </td>
                   <td className="px-4 py-3">
                     {fraud ? (
@@ -320,7 +388,8 @@ export default async function WarehousePage({
 
         {orders.length === 0 && (
           <p className="py-8 text-center text-sm text-zinc-400">
-            No orders found. Click &quot;Run Fraud Detection&quot; to generate predictions.
+            No orders found. Click &quot;Run Fraud Detection&quot; to generate
+            predictions.
           </p>
         )}
       </div>
@@ -343,7 +412,10 @@ export default async function WarehousePage({
             {pageWindow.map((page, index) => {
               if (page === "ellipsis") {
                 return (
-                  <span key={`ellipsis-${index}`} className="px-2 text-zinc-400">
+                  <span
+                    key={`ellipsis-${index}`}
+                    className="px-2 text-zinc-400"
+                  >
                     ...
                   </span>
                 );
@@ -367,7 +439,9 @@ export default async function WarehousePage({
           </div>
 
           <Link
-            href={buildWarehouseHref({ page: Math.min(totalPages, currentPage + 1) })}
+            href={buildWarehouseHref({
+              page: Math.min(totalPages, currentPage + 1),
+            })}
             aria-disabled={currentPage === totalPages}
             className={`rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
               currentPage === totalPages
