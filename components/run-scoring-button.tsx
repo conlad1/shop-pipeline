@@ -3,6 +3,8 @@
 import { useActionState } from "react";
 import { runScoring } from "@/app/actions/scoring";
 
+// await fetch('/api/score', { method: 'POST' })
+
 export function RunScoringButton() {
   const [state, formAction, pending] = useActionState(runScoring, null);
 

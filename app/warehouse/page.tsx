@@ -1,8 +1,29 @@
 import { prisma } from "@/lib/db";
-import { RunScoringButton } from "@/components/run-scoring-button";
+import { RunFraudButton } from "@/components/run-fraud-button";
 import { StatusBadge } from "@/components/status-badge";
+import Database from "better-sqlite3";
+import path from "path";
+
+type FraudPrediction = {
+  order_id: number;
+  fraud_probability: number;
+  is_fraud_predicted: number;
+};
+
+function getFraudPredictions(): Map<number, FraudPrediction> {
+  try {
+    const db = new Database(path.join(process.cwd(), "prisma", "shop.db"), { readonly: true });
+    const rows = db.prepare("SELECT order_id, fraud_probability, is_fraud_predicted FROM order_predictions").all() as FraudPrediction[];
+    db.close();
+    return new Map(rows.map((r) => [r.order_id, r]));
+  } catch {
+    // Table doesn't exist yet — fraud detection hasn't been run
+    return new Map();
+  }
+}
 
 export default async function WarehousePage() {
+  const fraudMap = getFraudPredictions();
   const orders = await prisma.order.findMany({
     orderBy: { riskScore: "desc" },
     take: 50,
@@ -24,7 +45,7 @@ export default async function WarehousePage() {
             Top 50 orders ranked by risk score.
           </p>
         </div>
-        <RunScoringButton />
+        <RunFraudButton />
       </div>
 
       <div className="mt-8 overflow-x-auto rounded-lg border border-zinc-200 bg-white shadow-sm">
@@ -38,7 +59,7 @@ export default async function WarehousePage() {
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Ordered</th>
               <th className="px-4 py-3">Est. Delivery</th>
-              <th className="px-4 py-3">Risk Score</th>
+              <th className="px-4 py-3">Fraud Prob.</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-100">
@@ -50,6 +71,7 @@ export default async function WarehousePage() {
                 : "processing";
               const product = order.items.map((i) => i.product.productName).join(", ") || "—";
               const quantity = order.items.reduce((sum, i) => sum + i.quantity, 0);
+              const fraud = fraudMap.get(order.id);
 
               return (
                 <tr key={order.id} className="hover:bg-zinc-50">
@@ -71,17 +93,22 @@ export default async function WarehousePage() {
                     {estimatedDelivery.toLocaleDateString()}
                   </td>
                   <td className="px-4 py-3">
-                    <span
-                      className={`font-mono font-bold ${
-                        order.riskScore >= 70
-                          ? "text-danger"
-                          : order.riskScore >= 40
-                            ? "text-warning"
-                            : "text-success"
-                      }`}
-                    >
-                      {order.riskScore.toFixed(1)}
-                    </span>
+                    {fraud ? (
+                      <span
+                        className={`font-mono font-bold ${
+                          fraud.is_fraud_predicted
+                            ? "text-danger"
+                            : fraud.fraud_probability >= 0.3
+                              ? "text-warning"
+                              : "text-success"
+                        }`}
+                      >
+                        {(fraud.fraud_probability * 100).toFixed(1)}%
+                        {fraud.is_fraud_predicted ? " ⚠" : ""}
+                      </span>
+                    ) : (
+                      <span className="text-zinc-300">—</span>
+                    )}
                   </td>
                 </tr>
               );
@@ -90,8 +117,7 @@ export default async function WarehousePage() {
         </table>
         {orders.length === 0 && (
           <p className="py-8 text-center text-sm text-zinc-400">
-            No scored orders yet. Click &quot;Run Scoring&quot; to generate
-            predictions.
+            No orders yet. Click &quot;Run Fraud Detection&quot; to generate predictions.
           </p>
         )}
       </div>
