@@ -8,6 +8,14 @@ export function RunFraudButton() {
 
   return (
     <div className="flex items-center gap-4">
+      {state?.success && (
+        <span className="text-sm text-success">Fraud scores updated</span>
+      )}
+      {state?.error && (
+        <span className="text-sm text-danger" title={state.detail}>
+          {state.error}
+        </span>
+      )}
       <form action={formAction}>
         <button
           type="submit"
@@ -17,14 +25,6 @@ export function RunFraudButton() {
           {pending ? "Running..." : "Run Fraud Detection"}
         </button>
       </form>
-      {state?.success && (
-        <span className="text-sm text-success">Fraud scores updated</span>
-      )}
-      {state?.error && (
-        <span className="text-sm text-danger" title={state.detail}>
-          {state.error}
-        </span>
-      )}
     </div>
   );
 }

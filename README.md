@@ -6,7 +6,6 @@ A Next.js dashboard for order management and fraud detection. The fraud detectio
 
 - Node.js 18+
 - Python 3.11+
-- A PostgreSQL database (local, Docker, or [Neon](https://neon.tech) free tier)
 
 ## Setup
 
